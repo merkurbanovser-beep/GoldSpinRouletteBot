@@ -45,12 +45,18 @@ async def cmd_start(message: types.Message):
 async def fill_with_bots(message: types.Message):
     price = 10
     fake_names = ["Artem_PRO", "Daria_V", "MoonWalker", "Satoshi_N", "Elena", "X_Player"]
-    for _ in range(25):
+    
+    # Добавляем 30 ботов (или сколько нужно до лимита)
+    for _ in range(TARGET_PLAYERS):
         name = random.choice(fake_names) + str(random.randint(100, 999))
         cursor.execute("INSERT INTO players (user_id, username, room_price) VALUES (?, ?, ?)", 
                        ("0", name, price))
     conn.commit()
-    await message.answer(f"🤖 25 ботов добавлены в комнату {price} ⭐!")
+    
+    await message.answer(f"🤖 {TARGET_PLAYERS} ботов добавлены в комнату {price} ⭐!")
+    
+    # ВАЖНО: Вызываем проверку розыгрыша сразу после заполнения
+    await start_draw(message, price)
 
 # ... (начало кода совпадает)
 
