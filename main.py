@@ -61,9 +61,13 @@ async def process_join(callback: types.CallbackQuery):
 
     # Получаем количество участников в виде числа
     cursor.execute("SELECT COUNT(*) FROM players WHERE room_price = ?", (price,))
-    current_count = cursor.fetchone()[0] # ИСПРАВЛЕНО: Извлекаем число напрямую
+    count_tuple = cursor.fetchone() 
+    # ИСПРАВЛЕНИЕ НИЖЕ: Правильно извлекаем число из кортежа
+    current_count = count_tuple[0] if count_tuple and count_tuple[0] is not None else 0
+
 
     if current_count >= TARGET_PLAYERS:
+        # Это сообщение показывается во всплывающем окне (alert=True)
         await callback.answer("Розыгрыш уже начался!", show_alert=True)
         return
 
