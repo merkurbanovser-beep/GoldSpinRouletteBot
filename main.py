@@ -61,74 +61,66 @@ async def process_join(callback: types.CallbackQuery):
     user_id = str(callback.from_user.id)
     username = callback.from_user.username or callback.from_user.first_name
 
-    # 1. ПРОВЕРКА: Не участвует ли уже пользователь?
-    cursor.execute("SELECT id FROM players WHERE user_id = ? AND room_price = ?", (user_id, price))
-    if cursor.fetchone():
-        await callback.answer("❌ Вы уже участвуете в этой комнате!", show_alert=True)
-        return
-
-    # 2. ПРОВЕРКА: Не заполнена ли уже комната?
-    cursor.execute("SELECT COUNT(*) FROM players WHERE room_price = ?", (price,))
-    current_count = cursor.fetchone()[0]
-
-    if current_count >= TARGET_PLAYERS:
-        await callback.answer("⏳ Мест больше нет, идет выбор победителя!", show_alert=True)
-        return
-
-    # 3. ЗАПИСЬ ИГРОКА
+    # 1. Записываем игрока
     cursor.execute("INSERT INTO players (user_id, username, room_price) VALUES (?, ?, ?)", 
                    (user_id, username, price))
     conn.commit()
-    
-    # Получаем актуальное число участников после записи
+
+    # 2. СРАЗУ проверяем актуальное количество в этой комнате
     cursor.execute("SELECT COUNT(*) FROM players WHERE room_price = ?", (price,))
-    new_count = cursor.fetchone()[0]
-    
-    # 4. ОБНОВЛЕНИЕ ТЕКСТА (с защитой от ошибок)
+    result = cursor.fetchone()
+    current_count = result[0] if result else 0
+
+    # 3. Редактируем сообщение (с защитой от ошибок Telegram)
     try:
         await callback.message.edit_text(
             f"✅ Участие принято в комнате {price} ⭐\n"
-            f"Собрано участников: {new_count} из {TARGET_PLAYERS}\n\n"
-            "Ожидай завершения набора!"
+            f"Собрано участников: {current_count} из {TARGET_PLAYERS}\n\n"
+            "Ожидайте завершения набора!"
         )
     except Exception:
-        # Если не удалось отредактировать (например, текст тот же), просто идем дальше
         pass
 
-    # 5. ЗАПУСК РОЗЫГРЫША
-    if new_count >= TARGET_PLAYERS:
+    # 4. Если набралось НУЖНОЕ количество (или больше) — запускаем
+    if current_count >= TARGET_PLAYERS:
         await start_draw(callback.message, price)
+    else:
+        await callback.answer("Вы добавлены!")
 
 # Логика розыгрыша
 async def start_draw(message, price):
-    # ПРОВЕРКА: Чтобы избежать двойного запуска, если два человека нажали одновременно
+    # Получаем список всех участников этой комнаты
     cursor.execute("SELECT user_id, username FROM players WHERE room_price = ?", (price,))
     all_players = cursor.fetchall()
-    
-    if len(all_players) < TARGET_PLAYERS:
-        return # Если кто-то успел очистить базу раньше
+
+    # Проверка на случай системного сбоя
+    if not all_players or len(all_players) < TARGET_PLAYERS:
+        return
 
     await message.answer(f"🎰 ВНИМАНИЕ! Комната {price} ⭐ заполнена! Выбираем счастливчика...")
-    await asyncio.sleep(3)
+    await asyncio.sleep(2) 
 
+    # ВЫБОР ПОБЕДИТЕЛЯ
     winner = random.choice(all_players)
     w_id, w_name = winner
     
-    bank = price * TARGET_PLAYERS
+    bank = price * len(all_players)
     fee = int(bank * 0.15)
     prize = bank - fee
 
-    # Упоминание пользователя через ID, если нет username
-    mention = f"@{w_name}" if not w_name.isdigit() else f"ID: {w_id}"
+    # Красивое упоминание (работает даже если нет username)
+    winner_link = f"<a href='tg://user?id={w_id}'>{w_name}</a>"
 
     await message.answer(
-        f"🎉 РОЗЫГРЫШ ЗАВЕРШЕН!\n\n"
-        f"🏆 Победитель: {mention}\n"
-        f"💰 Выигрыш: {prize} ⭐\n"
+        f"🎉 <b>РОЗЫГРЫШ ЗАВЕРШЕН!</b>\n\n"
+        f"🏆 Победитель: {winner_link}\n"
+        f"💰 Выигрыш: {prize} ⭐ (чистыми)\n"
         f"🛡 Комиссия системы: {fee} ⭐\n\n"
-        f"Поздравляем! Новая игра в этой комнате открыта.")
+        f"Поздравляем! Новая игра открыта.",
+        parse_mode="HTML"
+    )
 
-    # Очистка базы
+    # Очистка базы для этой комнаты
     cursor.execute("DELETE FROM players WHERE room_price = ?", (price,))
     conn.commit()
 
