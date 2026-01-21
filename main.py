@@ -1,14 +1,22 @@
 import asyncio
 import random
 import sqlite3
+import os  # Импортируем модуль OS для чтения переменных окружения
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, BotCommand, BotCommandScopeDefault
 
 # === НАСТРОЙКИ ===
-API_TOKEN = '8255936453:AAEfRCrQV5Iqno5aFjGevWzO4uBqg5NJYKg' 
-ADMIN_ID = 681384042  # Твой ID (для работы команды /fill)
+# Теперь токен берется из переменной окружения BOT_TOKEN
+API_TOKEN = os.getenv('BOT_TOKEN') 
+
+# Проверка на случай, если переменная окружения не установлена
+if not API_TOKEN:
+    print("Ошибка: Токен BOT_TOKEN не найден в переменных окружения!")
+    exit("Пожалуйста, установите переменную окружения BOT_TOKEN на вашем хостинге/GitHub.")
+
+ADMIN_ID = 681384042  # Ваш ID (для команды /fill)
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
@@ -25,14 +33,14 @@ conn.commit()
 ROOM_PRICES = [10, 30, 50, 100, 200]
 TARGET_PLAYERS = 30 
 
-# Постоянная кнопка "Играть"
+# Постоянная кнопка "Играть" (Reply-клавиатура)
 main_kb = ReplyKeyboardMarkup(
-    keyboard=[[KeyboardButton(text="Играть 🎲")]],
+    keyboard=],
     resize_keyboard=True,
     is_persistent=True
 )
 
-# Функция генерации кнопок комнат
+# Функция генерации кнопок комнат (Inline-клавиатура)
 def get_rooms_kb():
     builder = InlineKeyboardBuilder()
     for price in ROOM_PRICES:
@@ -78,7 +86,7 @@ async def process_join(callback: types.CallbackQuery):
     user_id = str(callback.from_user.id)
     username = callback.from_user.username or callback.from_user.first_name
 
-    # ЗАЩИТА УБРАНА: Просто записываем каждое нажатие
+    # Защита от накрутки УБРАНА: Просто записываем каждое нажатие
     cursor.execute("INSERT INTO players (user_id, username, room_price) VALUES (?, ?, ?)", 
                    (user_id, username, price))
     conn.commit()
@@ -133,8 +141,17 @@ async def start_draw(message, price):
     cursor.execute("DELETE FROM players WHERE room_price = ?", (price,))
     conn.commit()
 
+# Функция для установки кнопки меню через Bot API при запуске
+async def set_main_menu(bot: Bot):
+    main_menu_commands = [
+        BotCommand(command="start", description="Начать игру 🎲")
+    ]
+    await bot.set_my_commands(main_menu_commands, scope=BotCommandScopeDefault())
+
+
 async def main():
     print("Бот запущен. Накрутка разрешена. Кнопка активна.")
+    await set_main_menu(bot) # Устанавливаем кнопку меню при старте
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
